@@ -1,10 +1,12 @@
-function generateCode(length = 6) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let code = ''
+// Fonction pour générer un code alphanumérique de 8 caractères
+function generateCode(length = 8) {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const charactersLength = characters.length;
   for (let i = 0; i < length; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length))
+    result += characters.charAt(Math.floor(Math.random() * charactersLength));
   }
-  return code
+  return result;
 }
 
-module.exports = generateCode
+module.exports = generateCode;
