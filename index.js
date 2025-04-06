@@ -1,59 +1,52 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const { sessionCode } = require('./configuration');  // Optionnel, si tu as besoin de quelque chose de spécifique
+const fs = require('fs');  // Pour manipuler les fichiers
 
+// Créer une instance de client WhatsApp
 const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: { headless: true }
+    authStrategy: new LocalAuth(),  // Authentification locale pour stocker les sessions
 });
 
-// Fonction pour générer un code aléatoire de 6 caractères (chiffres et lettres)
-function generateSessionCode() {
-    return crypto.randomBytes(3).toString('hex').toUpperCase(); // 6 caractères aléatoires (3 octets = 6 caractères hexadécimaux)
-}
-
-client.on('authenticated', (session) => {
-    // Sauvegarde du sessionID dans un fichier pour une utilisation future
-    fs.writeFileSync(path.join(__dirname, 'session.json'), JSON.stringify(session));
-    console.log('Session authentifiée');
-
-    // Envoi d'un message à l'utilisateur pour confirmer la connexion
-    client.on('message', (message) => {
-        const userPhone = message.from;  // Récupère le numéro de l'utilisateur
-        const sessionCodeGenerated = generateSessionCode();
-        client.sendMessage(userPhone, `Bot connected successfully on WhatsApp!`);
-        client.sendMessage(userPhone, `Please use the code ${sessionCodeGenerated} to connect your bot.`);
-    });
-});
-
-client.on('message', (message) => {
-    // Commande '.menu' - Affiche les commandes disponibles
-    if (message.body === '.menu') {
-        const menu = `
-            *Bot Commands:*
-            1. .tagall - Mention all members in the group.
-            2. .kick - Kick a user from the group.
-            3. .kickall - Kick all members from the group.
-            4. .readstatus - Read and react to status messages.
-        `;
-        client.sendMessage(message.from, menu);
-    }
-
-    // Commande '.tagall' - Mentionne tout le groupe (exemple)
-    if (message.body === '.tagall') {
-        const groupMembers = ['@user1', '@user2', '@user3'];  // Remplacer par les membres du groupe
-        client.sendMessage(message.from, `Attention ${groupMembers.join(', ')}`);
-    }
-
-    // Autres commandes ici...
-});
-
+// Lorsque le client est prêt, il s'affiche dans la console
 client.on('ready', () => {
-    console.log('Client is ready!');
-    // Exemple d'envoi de message de bienvenue après la connexion réussie
-    client.sendMessage('<user_phone_number>', 'Bot has been successfully connected!');  // Remplacer par le numéro de téléphone de l'utilisateur
+    console.log('Le bot est connecté !');
+    client.sendMessage('your-phone-number@c.us', 'Bot successfully connected!');
 });
 
+// Lorsque le client reçoit un message
+client.on('message', message => {
+    console.log(message.body);
+    
+    // Si le message contient '.start', l'utilisateur doit entrer son numéro
+    if (message.body.startsWith('.start')) {
+        const phoneNumber = message.body.split(' ')[1]; // Récupère le numéro depuis la commande
+
+        // Vérifie que le numéro est bien formaté (ex: +50948162936)
+        if (phoneNumber && phoneNumber.match(/^\+?\d{10,15}$/)) {
+            // Génère un code de session unique à 6 caractères (chiffres et lettres)
+            const sessionCode = Math.random().toString(36).substr(2, 6).toUpperCase();
+            console.log(`Code de session pour ${phoneNumber} : ${sessionCode}`);
+            
+            // Envoie le code à l'utilisateur
+            message.reply(`Votre code de session pour connecter le bot à WhatsApp est : ${sessionCode}`);
+            
+            // Sauvegarde le code dans un fichier (optionnel)
+            fs.writeFileSync('sessionCode.txt', sessionCode);
+            console.log('Code de session enregistré dans sessionCode.txt');
+        } else {
+            message.reply('Numéro invalide, veuillez entrer un numéro WhatsApp valide (ex: +50948162936).');
+        }
+    }
+
+    // Si le message contient '.menu', envoie le menu des commandes
+    if (message.body === '.menu') {
+        message.reply("Voici les commandes disponibles :\n- .start <numéro WhatsApp>\n- .tagall\n- .kick\n- .kickall\n- .readstatus");
+    }
+});
+
+// Démarre le client WhatsApp
 client.initialize();
+
+// Exportation du client pour une utilisation dans d'autres fichiers
+module.exports = {
+    client,
+};
