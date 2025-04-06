@@ -1,70 +1,73 @@
-const generateCode = require('./utils/codeGenerator')
-
-function startBot() {
-  // Générer un code de 6 caractères (alphanumérique)
-  const code = generateCode()
-
-  console.log('\n>>> Put this code on WhatsApp (Appareils connectés > Utiliser un code) to connect YAMA:')
-  console.log(`>>> CODE: ${code}\n`)
-
-  // Logique pour connecter le bot avec WhatsApp ici
-  // Exemple de simulation d'une connexion réussie :
-  setTimeout(() => {
-    console.log('✅ YAMA is now connected to WhatsApp!')
-  }, 10000) // La connexion prend 10 secondes ici pour simuler
-}
-
-// Exposer la fonction startBot pour qu'on puisse l'utiliser dans index.js
-module.exports = { startBot }
-
-// Importer les fonctions de simple.js
+// Importer les modules nécessaires
+const generateCode = require('./utils/codeGenerator');
 const { makeWASocketInstance, authenticateBot, requestPairingCode, sendMessage, sendImage, fetchLatestBaileysVersion } = require('./simple');
-
-// Variables globales et autres importations
 const path = require('path');
 const chalk = require('chalk');
-const { reply, sender } = m; // Dépend de votre structure de code
+const Pino = require('pino');  // Importer Pino pour les logs
+const { useMultiFileAuthState } = require('@adiwajshing/baileys');  // Exemple d'importation pour l'authentification
 
-// Authentification et initialisation du bot
+// Générer un code de 8 caractères alphanumériques
+function startBot() {
+  const code = generateCode(8);  // Ici, on génère un code de 8 caractères
+
+  console.log('\n>>> Put this code on WhatsApp (Appareils connectés > Utiliser un code) to connect YAMA:');
+  console.log(`>>> CODE: ${code}\n`);
+
+  // Simuler la connexion
+  setTimeout(() => {
+    console.log('✅ YAMA is now connected to WhatsApp!');
+  }, 10000); // La connexion prend 10 secondes ici pour simuler
+}
+
+// Exposer la fonction startBot pour l'utiliser dans index.js
+module.exports = { startBot };
+
+// Fonction principale pour démarrer le bot
 async function start() {
-    let { version, isLatest } = await fetchLatestBaileysVersion();
+  // Charger l'état d'authentification
+  const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, './auth')); // Mettez votre chemin ici
 
-    const config = {
-        logger: Pino({ level: "fatal" }).child({ level: "fatal" }),
-        printQRInTerminal: false,
-        mobile: false,
-        auth: {
-            creds: state.creds,
-            keys: makeCacheableSignalKeyStore(state.keys, Pino({ level: "fatal" }).child({ level: "fatal" })),
-        },
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
-        markOnlineOnConnect: true,
-        generateHighQualityLinkPreview: true,
-        msgRetryCounterCache,
-        defaultQueryTimeoutMs: undefined
-    };
+  // Récupérer la version la plus récente de Baileys
+  let { version, isLatest } = await fetchLatestBaileysVersion();
 
-    // Création de la socket
-    const XeonBotInc = makeWASocketInstance(config);
+  // Configuration du bot
+  const config = {
+    logger: Pino({ level: 'fatal' }).child({ level: 'fatal' }),
+    printQRInTerminal: false,
+    mobile: false,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, Pino({ level: 'fatal' }).child({ level: 'fatal' })),
+    },
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
+    markOnlineOnConnect: true,
+    generateHighQualityLinkPreview: true,
+    msgRetryCounterCache: {},
+    defaultQueryTimeoutMs: undefined
+  };
 
-    // Authentification de l'utilisateur
-    const { state, saveCreds } = await authenticateBot(sender);
+  // Créer l'instance du bot
+  const XeonBotInc = makeWASocketInstance(config);
 
-    // Vérification de l'enregistrement et demande du code de pairage
-    if (!XeonBotInc.authState.creds.registered) {
-        setTimeout(async () => {
-            let phoneNumber = `${text}`;  // Remplacer par le numéro correct
-            console.log(chalk.red.bold(`[ Jadibot ] -> (+${phoneNumber})`));
+  // Authentification de l'utilisateur
+  const sender = 'votre-numero-whatsapp';  // Remplacez cela par le numéro correct
+  const { state: authState, saveCreds } = await authenticateBot(sender);
 
-            // Demander le code de pairage
-            let code = await requestPairingCode(phoneNumber, XeonBotInc);
-            let hasilcode = code?.match(/.{1,4}/g)?.join("-") || code;
-            global.codepairing = `${hasilcode}`;
-            console.log(`Pairing code generated: ${global.codepairing}`);
-        }, 3000);
-    }
+  // Si l'utilisateur n'est pas enregistré, demander un code de pairage
+  if (!XeonBotInc.authState.creds.registered) {
+    setTimeout(async () => {
+      let phoneNumber = 'votre-numero-whatsapp';  // Remplacez par le numéro correct
+      console.log(chalk.red.bold(`[ Jadibot ] -> (+${phoneNumber})`));
 
-    // Autres logiques de votre bot...
+      // Demander le code de pairage
+      let code = await requestPairingCode(phoneNumber, XeonBotInc);
+      let hasilcode = code?.match(/.{1,4}/g)?.join("-") || code;
+      global.codepairing = `${hasilcode}`;
+      console.log(`Pairing code generated: ${global.codepairing}`);
+    }, 3000);
+  }
+
+  // Autres logiques de votre bot...
 }
 
 // Lancer le bot
