@@ -1,56 +1,39 @@
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-require('dotenv').config();
-
-// Import des commandes
-const tagAll = require('./commands/tagall');
-const kick = require('./commands/kick');
-const kickAll = require('./commands/kickall');
-const readStatus = require('./commands/readstatus');
-const showMenu = require('./commands/menu');
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const fs = require('fs');
+const path = require('path');
+const QRCode = require('qrcode-terminal');
+const { sessionID } = require('./configuration');  // Importation du sessionID depuis configuration.js
 
 const client = new Client({
-    authStrategy: new LocalAuth({ clientId: process.env.WHATSAPP_SESSION || 'yama-session' }),
+    authStrategy: new LocalAuth(),
     puppeteer: { headless: true }
 });
 
-// QR code terminal
+// Vérification si un sessionID est fourni dans configuration.js
+if (sessionID) {
+    client.loadAuthInfo(sessionID);  // Charger le sessionID à partir du fichier de configuration
+    console.log('Session chargée avec succès !');
+} else {
+    console.log('Aucun sessionID trouvé dans configuration.js.');
+}
+
 client.on('qr', (qr) => {
-    qrcode.generate(qr, { small: true });
-    console.log("Scan the QR Code to log in.");
+    // Affiche le QR code si aucune sessionID n'est trouvée
+    QRCode.generate(qr, { small: true });
 });
 
-// Bot prêt
-client.on('ready', async () => {
-    console.log('YAMA is online!');
-
-    // Met à jour la photo de profil si un lien est fourni
-    if (process.env.BOT_IMAGE_URL) {
-        try {
-            const media = await MessageMedia.fromUrl(process.env.BOT_IMAGE_URL);
-            await client.setProfilePicture(media);
-            console.log("Bot profile picture updated.");
-        } catch (err) {
-            console.log("Error setting profile picture:", err);
-        }
-    }
+client.on('authenticated', (session) => {
+    // Sauvegarde du sessionID si l'authentification réussie
+    fs.writeFileSync(path.join(__dirname, 'session.json'), JSON.stringify(session));
+    console.log('Session authentifiée');
+    
+    // Envoi du sessionID à l'utilisateur sur WhatsApp
+    client.sendMessage('YOUR_WHATSAPP_NUMBER@c.us', `Votre session ID est : ${JSON.stringify(session)}`);
+    client.sendMessage('YOUR_WHATSAPP_NUMBER@c.us', 'Session authentifiée avec succès ! Vous pouvez maintenant copier ce sessionID et le mettre dans le fichier configuration.js.');
 });
 
-// Commandes
-client.on('message', async msg => {
-    const command = msg.body.toLowerCase();
-
-    if (command === '.tagall') {
-        await tagAll(client, msg);
-    } else if (command === '.kick' && msg.hasQuotedMsg) {
-        await kick(client, msg);
-    } else if (command === '.kickall') {
-        await kickAll(client, msg);
-    } else if (command === '.readstatus') {
-        await readStatus(client);
-    } else if (command === '.menu') {
-        await showMenu(client, msg);
-    }
+client.on('ready', () => {
+    console.log('Client is ready!');
 });
 
 client.initialize();
