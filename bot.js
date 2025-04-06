@@ -16,3 +16,56 @@ function startBot() {
 
 // Exposer la fonction startBot pour qu'on puisse l'utiliser dans index.js
 module.exports = { startBot }
+
+// Importer les fonctions de simple.js
+const { makeWASocketInstance, authenticateBot, requestPairingCode, sendMessage, sendImage, fetchLatestBaileysVersion } = require('./simple');
+
+// Variables globales et autres importations
+const path = require('path');
+const chalk = require('chalk');
+const { reply, sender } = m; // Dépend de votre structure de code
+
+// Authentification et initialisation du bot
+async function start() {
+    let { version, isLatest } = await fetchLatestBaileysVersion();
+
+    const config = {
+        logger: Pino({ level: "fatal" }).child({ level: "fatal" }),
+        printQRInTerminal: false,
+        mobile: false,
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(state.keys, Pino({ level: "fatal" }).child({ level: "fatal" })),
+        },
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
+        markOnlineOnConnect: true,
+        generateHighQualityLinkPreview: true,
+        msgRetryCounterCache,
+        defaultQueryTimeoutMs: undefined
+    };
+
+    // Création de la socket
+    const XeonBotInc = makeWASocketInstance(config);
+
+    // Authentification de l'utilisateur
+    const { state, saveCreds } = await authenticateBot(sender);
+
+    // Vérification de l'enregistrement et demande du code de pairage
+    if (!XeonBotInc.authState.creds.registered) {
+        setTimeout(async () => {
+            let phoneNumber = `${text}`;  // Remplacer par le numéro correct
+            console.log(chalk.red.bold(`[ Jadibot ] -> (+${phoneNumber})`));
+
+            // Demander le code de pairage
+            let code = await requestPairingCode(phoneNumber, XeonBotInc);
+            let hasilcode = code?.match(/.{1,4}/g)?.join("-") || code;
+            global.codepairing = `${hasilcode}`;
+            console.log(`Pairing code generated: ${global.codepairing}`);
+        }, 3000);
+    }
+
+    // Autres logiques de votre bot...
+}
+
+// Lancer le bot
+start();
