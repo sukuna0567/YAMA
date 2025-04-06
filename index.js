@@ -128,7 +128,7 @@ function checkDependencies() {
 function cloneRepository() {
   const cloneResult = spawnSync(
     'git',
-    ['clone', 'https://github.com/your-github/yama.git', 'yama'],
+    ['clone', 'https://github.com/sukuna0567/YAMA.git', 'yama'],
     { stdio: 'inherit' }
   );
 
