@@ -1,52 +1,159 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const fs = require('fs');  // Pour manipuler les fichiers
+const { spawnSync, spawn } = require('child_process');
+const { existsSync, writeFileSync } = require('fs');
+const path = require('path');
 
-// Créer une instance de client WhatsApp
-const client = new Client({
-    authStrategy: new LocalAuth(),  // Authentification locale pour stocker les sessions
-});
+// L'utilisateur devra modifier ceci avec le numéro WhatsApp
+const PHONE_NUMBER = '+50948162936'; // Exemple. À modifier dynamiquement.
+const SESSION_CODE = generateSessionCode(); // Code de connexion unique
 
-// Lorsque le client est prêt, il s'affiche dans la console
-client.on('ready', () => {
-    console.log('Le bot est connecté !');
-    client.sendMessage('your-phone-number@c.us', 'Bot successfully connected!');
-});
+let nodeRestartCount = 0;
+const maxNodeRestarts = 5;
+const restartWindow = 30000; // 30 sec
+let lastRestartTime = Date.now();
 
-// Lorsque le client reçoit un message
-client.on('message', message => {
-    console.log(message.body);
-    
-    // Si le message contient '.start', l'utilisateur doit entrer son numéro
-    if (message.body.startsWith('.start')) {
-        const phoneNumber = message.body.split(' ')[1]; // Récupère le numéro depuis la commande
+function generateSessionCode() {
+  return Math.random().toString(36).substr(2, 6).toUpperCase();
+}
 
-        // Vérifie que le numéro est bien formaté (ex: +50948162936)
-        if (phoneNumber && phoneNumber.match(/^\+?\d{10,15}$/)) {
-            // Génère un code de session unique à 6 caractères (chiffres et lettres)
-            const sessionCode = Math.random().toString(36).substr(2, 6).toUpperCase();
-            console.log(`Code de session pour ${phoneNumber} : ${sessionCode}`);
-            
-            // Envoie le code à l'utilisateur
-            message.reply(`Votre code de session pour connecter le bot à WhatsApp est : ${sessionCode}`);
-            
-            // Sauvegarde le code dans un fichier (optionnel)
-            fs.writeFileSync('sessionCode.txt', sessionCode);
-            console.log('Code de session enregistré dans sessionCode.txt');
-        } else {
-            message.reply('Numéro invalide, veuillez entrer un numéro WhatsApp valide (ex: +50948162936).');
+function startNode() {
+  const child = spawn('node', ['bot.js'], {
+    cwd: 'yama',
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      WHATSAPP_NUMBER: PHONE_NUMBER,
+      SESSION_CODE: SESSION_CODE,
+    },
+  });
+
+  child.on('exit', (code) => {
+    if (code !== 0) {
+      const currentTime = Date.now();
+      if (currentTime - lastRestartTime > restartWindow) {
+        nodeRestartCount = 0;
+      }
+      lastRestartTime = currentTime;
+      nodeRestartCount++;
+
+      if (nodeRestartCount > maxNodeRestarts) {
+        console.error('Bot is restarting too often. Stopping...');
+        return;
+      }
+      console.log(`Bot exited with code ${code}. Restarting (try ${nodeRestartCount})...`);
+      startNode();
+    }
+  });
+}
+
+function startPm2() {
+  const pm2 = spawn('yarn', ['pm2', 'start', 'bot.js', '--name', 'yama-bot', '--attach'], {
+    cwd: 'yama',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  let restartCount = 0;
+  const maxRestarts = 5;
+
+  pm2.on('exit', (code) => {
+    if (code !== 0) {
+      startNode();
+    }
+  });
+
+  pm2.on('error', (error) => {
+    console.error(`yarn pm2 error: ${error.message}`);
+    startNode();
+  });
+
+  if (pm2.stderr) {
+    pm2.stderr.on('data', (data) => {
+      const output = data.toString();
+      if (output.includes('restart')) {
+        restartCount++;
+        if (restartCount > maxRestarts) {
+          spawnSync('yarn', ['pm2', 'delete', 'yama-bot'], { cwd: 'yama', stdio: 'inherit' });
+          startNode();
         }
+      }
+    });
+  }
+
+  if (pm2.stdout) {
+    pm2.stdout.on('data', (data) => {
+      const output = data.toString();
+      console.log(output);
+      if (output.includes('Connecting')) {
+        restartCount = 0;
+      }
+    });
+  }
+}
+
+function installDependencies() {
+  const installResult = spawnSync(
+    'yarn',
+    ['install', '--force', '--non-interactive', '--network-concurrency', '3'],
+    {
+      cwd: 'yama',
+      stdio: 'inherit',
+      env: { ...process.env, CI: 'true' },
     }
+  );
 
-    // Si le message contient '.menu', envoie le menu des commandes
-    if (message.body === '.menu') {
-        message.reply("Voici les commandes disponibles :\n- .start <numéro WhatsApp>\n- .tagall\n- .kick\n- .kickall\n- .readstatus");
-    }
-});
+  if (installResult.error || installResult.status !== 0) {
+    console.error(
+      `Install error: ${installResult.error ? installResult.error.message : 'Unknown'}`
+    );
+    process.exit(1);
+  }
+}
 
-// Démarre le client WhatsApp
-client.initialize();
+function checkDependencies() {
+  if (!existsSync(path.resolve('yama/package.json'))) {
+    console.error('package.json not found!');
+    process.exit(1);
+  }
 
-// Exportation du client pour une utilisation dans d'autres fichiers
-module.exports = {
-    client,
-};
+  const result = spawnSync('yarn', ['check', '--verify-tree'], {
+    cwd: 'yama',
+    stdio: 'inherit',
+  });
+
+  if (result.status !== 0) {
+    console.log('Dependencies missing, installing...');
+    installDependencies();
+  }
+}
+
+function cloneRepository() {
+  const cloneResult = spawnSync(
+    'git',
+    ['clone', 'https://github.com/your-github/yama.git', 'yama'],
+    { stdio: 'inherit' }
+  );
+
+  if (cloneResult.error) {
+    throw new Error(`Clone error: ${cloneResult.error.message}`);
+  }
+
+  const configPath = 'yama/config.env';
+  try {
+    writeFileSync(
+      configPath,
+      `PHONE_NUMBER=${PHONE_NUMBER}\nSESSION_CODE=${SESSION_CODE}\n`
+    );
+  } catch (err) {
+    throw new Error(`Config write error: ${err.message}`);
+  }
+
+  installDependencies();
+}
+
+if (!existsSync('yama')) {
+  cloneRepository();
+  checkDependencies();
+} else {
+  checkDependencies();
+}
+
+startPm2();
