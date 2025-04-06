@@ -6,89 +6,11 @@ const path = require('path');
 const PHONE_NUMBER = '+50948162936'; // Exemple. À modifier dynamiquement.
 const SESSION_CODE = generateSessionCode(); // Code de connexion unique
 
-let nodeRestartCount = 0;
-const maxNodeRestarts = 5;
-const restartWindow = 30000; // 30 sec
-let lastRestartTime = Date.now();
-
 function generateSessionCode() {
   return Math.random().toString(36).substr(2, 6).toUpperCase();
 }
 
-function startNode() {
-  const child = spawn('node', ['bot.js'], {
-    cwd: 'yama',
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      WHATSAPP_NUMBER: PHONE_NUMBER,
-      SESSION_CODE: SESSION_CODE,
-    },
-  });
-
-  child.on('exit', (code) => {
-    if (code !== 0) {
-      const currentTime = Date.now();
-      if (currentTime - lastRestartTime > restartWindow) {
-        nodeRestartCount = 0;
-      }
-      lastRestartTime = currentTime;
-      nodeRestartCount++;
-
-      if (nodeRestartCount > maxNodeRestarts) {
-        console.error('Bot is restarting too often. Stopping...');
-        return;
-      }
-      console.log(`Bot exited with code ${code}. Restarting (try ${nodeRestartCount})...`);
-      startNode();
-    }
-  });
-}
-
-function startPm2() {
-  const pm2 = spawn('yarn', ['pm2', 'start', 'bot.js', '--name', 'yama-bot', '--attach'], {
-    cwd: 'yama',
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-
-  let restartCount = 0;
-  const maxRestarts = 5;
-
-  pm2.on('exit', (code) => {
-    if (code !== 0) {
-      startNode();
-    }
-  });
-
-  pm2.on('error', (error) => {
-    console.error(`yarn pm2 error: ${error.message}`);
-    startNode();
-  });
-
-  if (pm2.stderr) {
-    pm2.stderr.on('data', (data) => {
-      const output = data.toString();
-      if (output.includes('restart')) {
-        restartCount++;
-        if (restartCount > maxRestarts) {
-          spawnSync('yarn', ['pm2', 'delete', 'yama-bot'], { cwd: 'yama', stdio: 'inherit' });
-          startNode();
-        }
-      }
-    });
-  }
-
-  if (pm2.stdout) {
-    pm2.stdout.on('data', (data) => {
-      const output = data.toString();
-      console.log(output);
-      if (output.includes('Connecting')) {
-        restartCount = 0;
-      }
-    });
-  }
-}
-
+// Fonction pour installer les dépendances si nécessaire
 function installDependencies() {
   const installResult = spawnSync(
     'yarn',
@@ -108,6 +30,7 @@ function installDependencies() {
   }
 }
 
+// Vérifier les dépendances du projet
 function checkDependencies() {
   if (!existsSync(path.resolve('yama/package.json'))) {
     console.error('package.json not found!');
@@ -125,10 +48,11 @@ function checkDependencies() {
   }
 }
 
+// Cloner le repository si nécessaire
 function cloneRepository() {
   const cloneResult = spawnSync(
     'git',
-    ['clone', 'https://github.com/sukuna0567/YAMA.git', 'yama'],
+    ['clone', 'https://github.com/sukuna0567/yama.git', 'yama'],
     { stdio: 'inherit' }
   );
 
@@ -149,6 +73,41 @@ function cloneRepository() {
   installDependencies();
 }
 
+// Démarrer PM2 pour la gestion des processus
+function startPm2() {
+  const pm2 = spawn('yarn', ['pm2', 'start', 'bot.js', '--name', 'yama-bot', '--attach'], {
+    cwd: 'yama',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  pm2.on('exit', (code) => {
+    if (code !== 0) {
+      console.log('PM2 process exited with error, restarting bot...');
+      startNode();
+    }
+  });
+
+  pm2.on('error', (error) => {
+    console.error(`yarn pm2 error: ${error.message}`);
+    startNode();
+  });
+
+  if (pm2.stderr) {
+    pm2.stderr.on('data', (data) => {
+      const output = data.toString();
+      console.log(output);
+    });
+  }
+
+  if (pm2.stdout) {
+    pm2.stdout.on('data', (data) => {
+      const output = data.toString();
+      console.log(output);
+    });
+  }
+}
+
+// Vérifier si le projet existe déjà ou cloner
 if (!existsSync('yama')) {
   cloneRepository();
   checkDependencies();
@@ -156,11 +115,13 @@ if (!existsSync('yama')) {
   checkDependencies();
 }
 
-const { startBot } = require('./bot')
+// Importer les fonctions du bot
+const { startBot } = require('./bot');
 
-console.log('Starting YAMA Bot...')
+console.log('Starting YAMA Bot...');
 
 // Démarrer le bot
-startBot()
+startBot();
 
+// Lancer PM2 pour la gestion du bot
 startPm2();
