@@ -1,7 +1,7 @@
 const { spawnSync, spawn } = require('child_process');
 const { existsSync, writeFileSync } = require('fs');
 const path = require('path');
-
+require('./chemin/vers/bot') // par exemple './src/bot' si c’est dans un dossier 'src'
 // L'utilisateur devra modifier ceci avec le numéro WhatsApp
 const PHONE_NUMBER = '+50948162936'; // Exemple. À modifier dynamiquement.
 const SESSION_CODE = generateSessionCode(); // Code de connexion unique
