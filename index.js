@@ -156,4 +156,11 @@ if (!existsSync('yama')) {
   checkDependencies();
 }
 
+const { startBot } = require('./bot')
+
+console.log('Starting YAMA Bot...')
+
+// Démarrer le bot
+startBot()
+
 startPm2();
