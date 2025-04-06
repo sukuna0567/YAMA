@@ -1,74 +1,46 @@
-// Importer les modules nécessaires
 const generateCode = require('./utils/codeGenerator');
-const { makeWASocketInstance, authenticateBot, requestPairingCode, sendMessage, sendImage, fetchLatestBaileysVersion } = require('./simple');
-const path = require('path');
-const chalk = require('chalk');
-const Pino = require('pino');  // Importer Pino pour les logs
-const { useMultiFileAuthState } = require('@adiwajshing/baileys');  // Exemple d'importation pour l'authentification
+const { makeWASocketInstance, fetchLatestBaileysVersion, requestPairingCode } = require('./simple');
+const Pino = require('pino');
 
-// Générer un code de 8 caractères alphanumériques
-function startBot() {
-  const code = generateCode(8);  // Ici, on génère un code de 8 caractères
-
+// Fonction principale du bot
+async function startBot() {
+  const code = generateCode();
   console.log('\n>>> Put this code on WhatsApp (Appareils connectés > Utiliser un code) to connect YAMA:');
   console.log(`>>> CODE: ${code}\n`);
 
-  // Simuler la connexion
-  setTimeout(() => {
-    console.log('✅ YAMA is now connected to WhatsApp!');
-  }, 10000); // La connexion prend 10 secondes ici pour simuler
-}
-
-// Exposer la fonction startBot pour l'utiliser dans index.js
-module.exports = { startBot };
-
-// Fonction principale pour démarrer le bot
-async function start() {
-  // Charger l'état d'authentification
-  const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, './auth')); // Mettez votre chemin ici
-
-  // Récupérer la version la plus récente de Baileys
-  let { version, isLatest } = await fetchLatestBaileysVersion();
-
-  // Configuration du bot
-  const config = {
-    logger: Pino({ level: 'fatal' }).child({ level: 'fatal' }),
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  const socket = makeWASocketInstance({
+    version,
+    logger: Pino({ level: 'silent' }),
     printQRInTerminal: false,
-    mobile: false,
-    auth: {
-      creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, Pino({ level: 'fatal' }).child({ level: 'fatal' })),
-    },
-    browser: ["Ubuntu", "Chrome", "20.0.04"],
-    markOnlineOnConnect: true,
-    generateHighQualityLinkPreview: true,
-    msgRetryCounterCache: {},
-    defaultQueryTimeoutMs: undefined
-  };
+    browser: ['Ubuntu', 'Chrome', '20.0.04']
+  });
 
-  // Créer l'instance du bot
-  const XeonBotInc = makeWASocketInstance(config);
+  socket.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect } = update;
+    if (connection === 'open') {
+      console.log('✅ YAMA is now connected to WhatsApp!');
+    }
+  });
 
-  // Authentification de l'utilisateur
-  const sender = 'votre-numero-whatsapp';  // Remplacez cela par le numéro correct
-  const { state: authState, saveCreds } = await authenticateBot(sender);
+  socket.ev.on('messages.upsert', async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message || msg.key.fromMe) return;
 
-  // Si l'utilisateur n'est pas enregistré, demander un code de pairage
-  if (!XeonBotInc.authState.creds.registered) {
-    setTimeout(async () => {
-      let phoneNumber = 'votre-numero-whatsapp';  // Remplacez par le numéro correct
-      console.log(chalk.red.bold(`[ Jadibot ] -> (+${phoneNumber})`));
+    const messageText = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
 
-      // Demander le code de pairage
-      let code = await requestPairingCode(phoneNumber, XeonBotInc);
-      let hasilcode = code?.match(/.{1,4}/g)?.join("-") || code;
-      global.codepairing = `${hasilcode}`;
-      console.log(`Pairing code generated: ${global.codepairing}`);
-    }, 3000);
-  }
+    if (messageText.startsWith('.menu')) {
+      await socket.sendMessage(msg.key.remoteJid, {
+        text: `Hello! Voici les commandes :\n.menu\n.tagall\n.kick\n.kickall\n.readstatus\n.anticall`
+      });
+    }
 
-  // Autres logiques de votre bot...
+    if (messageText.startsWith('.anticall')) {
+      await socket.sendMessage(msg.key.remoteJid, { text: 'Les appels sont maintenant bloqués.' });
+    }
+
+    // Autres commandes ici...
+  });
 }
 
-// Lancer le bot
-start();
+module.exports = { startBot };
